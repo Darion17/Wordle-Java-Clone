@@ -8,9 +8,13 @@
 
 package src;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class Game {
 
@@ -19,6 +23,21 @@ public class Game {
     public static final String ANSI_BLACK_BACKGROUND = "\u001B[40m";
     public static final String ANSI_GREEN_BACKGROUND = "\u001B[42m";
     public static final String ANSI_YELLOW_BACKGROUND = "\u001B[43m";
+
+    // Preferred resource path on classpath
+    private static final String WORDS_RESOURCE = "/5-letter-words-list.txt";
+
+    // Some common file locations if running from filesystem
+    private static final Path[] FALLBACK_PATHS = new Path[] {
+            Paths.get("5-letter-words-list.txt"),
+            Paths.get("resources/5-letter-words-list.txt"),
+            Paths.get("data/5-letter-words-list.txt")
+    };
+
+    // Built-in list so the game still runs with no file present
+    private static final List<String> BUILTIN = List.of(
+            "APPLE","GRAPE","ROBOT","LEVEL","PLANT","SKILL","BRICK","STONE","WATER","MONEY"
+    );
 
     public static void mainMenu() {
         //Menu options
@@ -35,16 +54,56 @@ public class Game {
         System.out.println("\nEnter 1 to play!");
     }
 
+    /**
+     * Returns the sanitized list of valid words as an array (UPPERCASE, 5 letters, deduped).
+     * Your Main expects this method to produce the candidate dictionary.
+     */
     public static String[] randomWord() {
-        //Generate wordList - Source: https://www.bestwordlist.com/
-        String path = "..//Wordle//5-letter-words-list.txt";
-        String contents = null;
-        try {
-            contents = new String(Files.readAllBytes(Paths.get(path)));
-        } catch (IOException e) {
-            e.printStackTrace();
+        List<String> words = loadWordList();
+        return words.toArray(new String[0]);
+    }
+
+    // ---------- Helpers ----------
+
+    private static List<String> loadWordList() {
+        // 1) Try classpath
+        List<String> cp = readClasspathResource(WORDS_RESOURCE);
+        if (!cp.isEmpty()) return cp;
+
+        // 2) Try filesystem fallbacks
+        for (Path p : FALLBACK_PATHS) {
+            if (Files.exists(p)) {
+                try {
+                    List<String> lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+                    List<String> cleaned = sanitize(lines);
+                    if (!cleaned.isEmpty()) return cleaned;
+                } catch (Exception ignored) { /* try the next path */ }
+            }
         }
-        assert contents != null;
-        return contents.split("\\r?\\n");
+
+        // 3) Built-in fallback (guarantees the game runs)
+        return BUILTIN;
+    }
+
+    private static List<String> readClasspathResource(String resourcePath) {
+        try (InputStream is = Game.class.getResourceAsStream(resourcePath)) {
+            if (is == null) return Collections.emptyList();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                List<String> lines = br.lines().collect(Collectors.toList());
+                return sanitize(lines);
+            }
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    /** Keep only 5-letter A–Z words, uppercase them, dedupe. */
+    private static List<String> sanitize(List<String> raw) {
+        return raw.stream()
+                .map(s -> s == null ? "" : s.trim())
+                .filter(s -> s.matches("(?i)^[A-Z]{5}$"))
+                .map(String::toUpperCase)
+                .distinct()
+                .collect(Collectors.toList());
     }
 }
